@@ -2,6 +2,8 @@
 # COMP 262 - Phase 2: Machine Learning Sentiment Analysis
 # Team #2: All Beauty Dataset
 
+# SECTION 1: IMPORTS AND BASIC SETUP
+
 import os
 import pandas as pd
 import numpy as np
@@ -31,6 +33,7 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from textblob import TextBlob
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
+# SENTIMENT LABELING RULE 
 def label_sentiment(rating):
     """Map a numeric star rating to Positive, Neutral, or Negative."""
     if rating >= 4:
@@ -41,10 +44,11 @@ def label_sentiment(rating):
         return "Negative"
 
 
-print("PHASE 2 – Machine Learning Sentiment Analysis")
+#LOAD DATASET AND CREATE BASE COLUMNS 
+#Fill missing reviewText and summary with empty strings, concatenate into full_text, 
+# and create sentiment labels based on the overall star rating
 
-# --- start: reproducing phase 1 sample so these reviews stay out of ML training ---
-# df_raw = pd.read_json("All_Beauty.json", lines=True)
+print("PHASE 2 – Machine Learning Sentiment Analysis")
 
 base_path = os.path.dirname(__file__)
 json_path = os.path.join(base_path, "All_Beauty.json")
@@ -55,18 +59,24 @@ df_raw["summary"]    = df_raw["summary"].fillna("")
 df_raw["full_text"]  = df_raw["summary"] + " " + df_raw["reviewText"]
 df_raw["sentiment"]  = df_raw["overall"].apply(label_sentiment)
 
+#RECREATE PHASE 1 COMPARISON SAMPLE
+#Recreate same 1000-review sample from phase 1 
+#sample used for lexicon v ML comparison, excluded from ML training pool avoiding data leakage 
+
+
 # same two filters phase 1 applied before sampling
 df_raw["review_length"] = df_raw["reviewText"].apply(lambda x: len(str(x)))
 df_raw["review_len"]    = df_raw["full_text"].apply(len)
 df_p1_pool = df_raw[(df_raw["review_length"] > 3) & (df_raw["review_len"] > 2)].copy()
 df_compare = df_p1_pool.sample(n=min(1000, len(df_p1_pool)), random_state=77).copy()
-# --- end: phase 1 sample reproduced ---
+
+
+#CREATE PHASE 2 MACHINE LEARNING SUBSET
 
 # build a unique key per review so we can track which ones to exclude from training
 compare_keys = set(
     zip(df_compare["reviewerID"], df_compare["asin"], df_compare["reviewText"])
 )
-
 # remove those 1000 reviews from the ML pool so they cant end up in training, used for the final lexicon vs ML comparison at the end
 df_ml_pool = df_raw[df_raw["review_len"] > 10].copy()
 df_ml_pool["_key"] = list(zip(
@@ -80,12 +90,16 @@ sss = StratifiedShuffleSplit(n_splits=1, test_size=2500, random_state=42)
 _, idx = next(sss.split(df_ml_pool, df_ml_pool["sentiment"]))
 df_ml = df_ml_pool.iloc[idx].reset_index(drop=True)
 
+#Print basic checks for the selected ML subset.
+
 print(f"\nML Subset Shape: {df_ml.shape}")
 print("\nClass distribution in ML subset:")
 print(df_ml["sentiment"].value_counts())
 print(f"\nRating value distribution in ML subset:")
 print(df_ml["overall"].value_counts().sort_index())
 
+#DATA EXPLORATION FOR PHASE 2 SUBSET
+#print stats about ML subset, create plots 
 
 print("\n" + "=" * 60)
 print("Data Exploration – ML Subset")
@@ -122,6 +136,9 @@ plt.tight_layout()
 plt.savefig("ml_subset_exploration.png", dpi=150)
 plt.show()
 
+#TEXT PRE-PROCESSING AND TF-IDF REPRESENTATION FOR ML MODELS
+#clean the text for ML training and testing, then convert to TF-IDF features
+
 
 print("\n" + "=" * 60)
 print("Text Pre-processing & TF-IDF Representation")
@@ -144,6 +161,7 @@ def preprocess_ml(text):
 print("Applying ML pre-processing pipeline...")
 df_ml["text_clean"] = df_ml["full_text"].apply(preprocess_ml)
 
+#TRAIN-TEST SPLIT AND VECTORIZATION
 
 print("\n" + "=" * 60)
 print("Stratified 70/30 Train-Test Split")
@@ -180,6 +198,11 @@ print(f"\nTF-IDF vocabulary size: {len(tfidf.vocabulary_):,}")
 print(f"Training matrix shape:  {X_train_tfidf.shape}")
 print(f"Test matrix shape:      {X_test_tfidf.shape}")
 
+#MODEL TRAINING AND FINE-TUNING
+#tune hyperparameters for Logistic Regression and Linear SVM 
+# using GridSearchCV with 5-fold cross validation, 
+# optimizing for macro F1 to handle class imbalance. 
+# Then evaluate training performance before testing on the held-out test set.
 
 print("\n" + "=" * 60)
 print("Model Training & Fine-Tuning")
@@ -225,6 +248,9 @@ svm_train_pred = best_svm.predict(X_train_tfidf)
 print(f"\nTraining Accuracy: {accuracy_score(y_train, svm_train_pred):.4f}")
 print(classification_report(y_train, svm_train_pred, zero_division=0))
 
+#TESTING ON HELD-OUT TEST SET
+#test both trained models on  the test set
+#print metrics and generate confusion matrix
 
 print("\n" + "=" * 60)
 print("Testing on 30% Held-Out Test Set")
@@ -284,9 +310,14 @@ ml_summary = pd.DataFrame({
 })
 print(ml_summary.round(4).to_string(index=False))
 
+#LEXICON VS ML COMPARISON 
+#Compare phase 1 lexicon models with phase 2 ml models. 
+#Use the same 1000-review sample from phase 1 for all four models
+#Comparing: VADER, TextBlob, Logistic Regression, Linear SVM
+#Print metrics table and save confusion matrices
 
 print("\n" + "=" * 60)
-print("Lexicon vs ML – Apples-to-Apples Comparison")
+print("Lexicon vs ML - Apples-to-Apples Comparison")
 print("Using the same 1000-review sample as Phase 1 (random_state=77)")
 print("=" * 60)
 
@@ -399,6 +430,10 @@ print("=" * 60)
 
 #-----------------------------------------------------------------------------------------------------
 # ENHANCING THE RATING VALUE
+#Use review sentiment to adjust original star ratings
+#Predict sentiment with LR model
+#Convert sentiment into a numeric score, combine to enhance review score, then calculate enhanced product ratings and rankings
+
 print("""
 ENHANCING THE RATING VALUE
 Star ratings alone do not always capture the full opinion of the reviewer. 
@@ -511,7 +546,8 @@ print("Average original rating:", round(product_scores_jason["average_star_ratin
 print("Average enhanced rating:", round(product_scores_jason["enhanced_rating"].mean(), 4))
 
 
-# Step 16 - Summarize reviews with >100 words length into 50 words using HuggingFace LLM model
+#LLM REVIEW SUMMARIZATION
+#Summarize reviews with >100 words length into 50 words using LLM model
 
 #get reviews with words length greater than 100 and get 10 reviews to summarize
 df_review_100 = df_raw.copy()
@@ -523,6 +559,7 @@ reviews_10 = reviews_100[:10]
 MODEL_NAME = "google/flan-t5-base"
 CACHE_DIR = "./hf_cache"
 
+#Load the tokenizer and model from the local cache directory
 tokenizer = AutoTokenizer.from_pretrained(
     MODEL_NAME,
     cache_dir=CACHE_DIR,
@@ -536,6 +573,7 @@ model = AutoModelForSeq2SeqLM.from_pretrained(
 )
 
 def summarize_texts(num):
+  """Summarize the review at index num using the FLAN-T5 model."""
   input_text = "summarize: " + reviews_10[num]
   inputs = tokenizer(input_text, max_length=1024, truncation=True, return_tensors="pt") #set the input reviews to be summarized
   #set the output summarized reviews
@@ -559,7 +597,10 @@ def summarize_texts(num):
 for i, review in enumerate(reviews_10):
   summarize_texts(i)
   
-# Step 17 Generated a response from a review
+#CUSTOMER RESPONSE GENERATION
+#Load FLAN-T5 large from local Hugging Face cache.
+#use customer-service prompt for negative question-style review
+#generate, print a polite service rep response
 
 #Load Hugging face model
 llm_model = "google/flan-t5-large"
@@ -577,11 +618,11 @@ model = AutoModelForSeq2SeqLM.from_pretrained(
     local_files_only=True
 )
 
-review = "Provide a polite and helpful response as a service representative to this review: everything was a mess and also broken....how to send a box like  this????I want my money back"
+review = "Provide a polite and helpful response as a service representative to this review:" \
+" everything was a mess and also broken....how to send a box like  this????I want my money back"
 
-inputs = tokenizer(review, return_tensors="pt", truncation=True) #set the input review that will serve as the prompt
+inputs = tokenizer(review, return_tensors="pt", truncation=True) 
 
-#set the output summarized reviews, length of 50 words
 outputs = model.generate(
     inputs['input_ids'],
     max_new_tokens=80,
