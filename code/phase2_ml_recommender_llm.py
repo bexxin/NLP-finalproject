@@ -557,7 +557,7 @@ reviews_10 = reviews_100[:10]
 # Load FLAN-T5 base from local Hugging Face cache.
 # Run cache_flant5_base.py first to load model into the cache if not already cached.
 MODEL_NAME = "google/flan-t5-base"
-CACHE_DIR = "./hf_cache"
+CACHE_DIR = os.path.join(base_path, "hf_cache")
 
 #Load the tokenizer and model from the local cache directory
 tokenizer = AutoTokenizer.from_pretrained(
@@ -604,7 +604,7 @@ for i, review in enumerate(reviews_10):
 
 #Load Hugging face model
 llm_model = "google/flan-t5-large"
-CACHE_DIR_LARGE = "./hf_cache_large"
+CACHE_DIR_LARGE = os.path.join(base_path, "hf_cache_large")
 
 tokenizer = AutoTokenizer.from_pretrained(
     llm_model,
